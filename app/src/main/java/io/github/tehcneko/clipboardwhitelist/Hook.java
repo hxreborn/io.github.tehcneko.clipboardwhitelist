@@ -6,21 +6,18 @@ import androidx.annotation.NonNull;
 
 import java.util.Set;
 
-import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.annotations.BeforeInvocation;
-import io.github.libxposed.api.annotations.XposedHooker;
 
 @SuppressLint({"PrivateApi", "BlockedPrivateApi"})
 public class Hook extends XposedModule {
     public static Set<String> whitelist;
 
-    public Hook(XposedInterface base, ModuleLoadedParam param) {
-        super(base, param);
+    public Hook() {
+        super();
     }
 
     @Override
-    public void onSystemServerLoaded(@NonNull SystemServerLoadedParam param) {
+    public void onSystemServerStarting(@NonNull SystemServerStartingParam param) {
         var classLoader = param.getClassLoader();
 
         var preference = getRemotePreferences("clipboad_whitelist");
@@ -33,26 +30,24 @@ public class Hook extends XposedModule {
         try {
             hookIsDefaultIme(classLoader);
         } catch (Throwable t) {
-            log("hook isDefaultIme failed", t);
+            log(android.util.Log.ERROR, "ClipboardWhitelist", "hook isDefaultIme failed", t);
         }
     }
 
     private void hookIsDefaultIme(ClassLoader classLoader) throws ClassNotFoundException, NoSuchMethodException {
         var clipboardServiceClazz = classLoader.loadClass("com.android.server.clipboard.ClipboardService");
         var isDefaultImeMethod = clipboardServiceClazz.getDeclaredMethod("isDefaultIme", int.class, String.class);
-        hook(isDefaultImeMethod, IsDefaultIMEHooker.class);
+        hook(isDefaultImeMethod).intercept(new IsDefaultIMEHooker());
     }
 
-    @XposedHooker
     private static class IsDefaultIMEHooker implements Hooker {
-
-        @BeforeInvocation
-        public static void before(@NonNull BeforeHookCallback callback) {
-            var packageName = (String) callback.getArgs()[1];
-
+        @Override
+        public Object intercept(@NonNull Chain chain) throws Throwable {
+            var packageName = (String) chain.getArg(1);
             if (whitelist.contains(packageName)) {
-                callback.returnAndSkip(true);
+                return true;
             }
+            return chain.proceed();
         }
     }
 }
